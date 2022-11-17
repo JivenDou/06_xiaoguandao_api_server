@@ -23,3 +23,29 @@ class GetEchartsData(BaseModel):
     timeRange: str = "HOUR"
     paramName: str = "c24"
 
+
+class GetHistoryData(BaseModel):
+    """获取不同表的历史数据"""
+    pageName: str = "SZ"
+    startDate: str = "2022-11-11"
+    endDate: str = "2022-11-11"
+    excel: int = 0
+
+
+class GetMmsi(BaseModel):
+    """获取指定时间内的船只mmsi"""
+    startDate: str = "2022-08-31"
+    endDate: str = "2022-08-31"
+
+
+class GetHistoryTrack(BaseModel):
+    """获取船只历史轨迹"""
+    mmsi: str = "413220010"
+    startDate: str = "2022-08-31"
+    endDate: str = "2022-08-31"
+
+
+class ControlSwitch(BaseModel):
+    """控制总电源和绞车电源"""
+    masterSta: int = 1
+    winchSta: int = 1

@@ -7,10 +7,13 @@
 
 import uvicorn
 import body_model
+import enums
 import other_methods
+import pandas as pd
 from fastapi import FastAPI
-from tortoise import Tortoise
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from tortoise import Tortoise
 from tortoise.contrib.fastapi import register_tortoise
 from datetime import datetime
 from enums import param_name_list
@@ -18,17 +21,18 @@ from enums import param_name_list
 app = FastAPI(title='小管岛海洋牧场监测系统接口文档',
               description='好好工作！努力赚钱！！')
 # 配置允许域名
-origins = [
-    "http://localhost.tiangolo.com",
-    "https://localhost.tiangolo.com",
-    "http://localhost",
-    "http://localhost:8080",
-    "http://127.0.0.1",
-]
+# origins = [
+#     "http://localhost.tiangolo.com",
+#     "https://localhost.tiangolo.com",
+#     "http://localhost",
+#     "http://localhost:8080",
+#     "http://192.168.1.30",
+# ]
 # 配置允许域名列表、允许方法、请求头、cookie等
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    # allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"])
@@ -67,20 +71,22 @@ async def real_data(item: body_model.GetRealData):
     - "pageName"：页面名称（类型：str）【参数："SZ"(水质)、"SW"(水文)、"TYN"(太阳能)】
     """
     db = Tortoise.get_connection("default")
-    name = item.pageName
-    if name == "SZ":
-        sql = "SELECT c23, c24, c25, c26, c27, c28, c29 FROM table_shucai ORDER BY times DESC LIMIT 1"
-    elif name == "SW":
-        sql = "SELECT c1, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c22 " \
-              "FROM table_shucai ORDER BY times DESC LIMIT 1"
-    elif name == "TYN":
-        sql = "SELECT c14, c15, c16, c17, c18, c19, c20, c21 " \
-              "FROM table_shucai ORDER BY times DESC LIMIT 1"
+    page_name = item.pageName
+    if page_name == "SZ":
+        param_names = enums.sz_param_name_list
+    elif page_name == "SW":
+        param_names = enums.sw_param_name_list
+    elif page_name == "TYN":
+        param_names = enums.tyn_param_name_list
     else:
         return {"msg": "page_name error"}
 
+    sql = f"SELECT {','.join(param_names)} FROM table_shucai ORDER BY times DESC LIMIT 1"
     result = await db.execute_query_dict(sql)
     if result:
+        for r in result[0]:
+            if result[0][r] is not None:
+                result[0][r] = round(result[0][r], 2)
         return result[0]
     else:
         return result
@@ -127,7 +133,136 @@ async def echarts_data(item: body_model.GetEchartsData):
     return {'time': result_time, 'value': result_value}
 
 
-@app.get("/xiaoguandao/SZ/maxMinAvg", summary="获取水质页24小时内最大最小平均表格数据")
+@app.post("/xiaoguandao/History/historyData", summary="历史数据页：获取历史数据")
+async def history_data(item: body_model.GetHistoryData):
+    """
+    请求参数说明：
+    - "pageName"：页面名（类型：str）【参数："SZ"(水质)、"SW"(水文)、"TYN"(太阳能)】
+    - "startDate"：开始日期（类型：str）【参数格式："YYYY-MM-DD"】
+    - "endDate"：结束日期（类型：str）【参数格式："YYYY-MM-DD"】
+    - "excel"：是否下载excel（类型：int）【参数：0（不下载只要数据）、1（要下载）】
+    """
+    db = Tortoise.get_connection("default")
+    page_name = item.pageName
+    start_date = item.startDate
+    end_date = item.endDate
+    excel_flag = item.excel
+    # --------------------------------------------------查数据--------------------------------------------------
+    if page_name == "SZ":
+        param_names = enums.sz_param_name_list
+    elif page_name == "SW":
+        param_names = enums.sw_param_name_list
+    elif page_name == "TYN":
+        param_names = enums.tyn_param_name_list
+    else:
+        return {"msg": "page_name error"}
+
+    select_params = [f"ROUND({name},2)  {name}" for name in param_names]
+    if start_date == end_date:
+        sql = f"SELECT id,times,{','.join(select_params)} FROM `table_shucai` " \
+              f"WHERE date_format(times,'%Y-%m-%d')='{start_date}' ORDER BY times DESC;"
+    else:
+        sql = f"SELECT id,times,{','.join(select_params)} FROM `table_shucai` " \
+              f"WHERE times >= '{start_date} 00:00:00' AND times <= '{end_date} 23:59:59' ORDER BY times DESC;"
+    result = await db.execute_query_dict(sql)
+    for data in result:
+        data['times'] = str(data['times'])
+    # --------------------------------------------------返回excel--------------------------------------------------
+    if excel_flag:
+        df = pd.DataFrame(result)
+        df.rename(columns=enums.cnum2chinese, inplace=True)
+        # print(df)
+        # 生成excel文件
+        df.to_excel('./otherFile/excel.xlsx', sheet_name='Sheet1', index=False)  # index false为不写入索引
+        headers = {'Content-Disposition': 'attachment; filename="excel.xlsx"'}
+        return FileResponse('./otherFile/excel.xlsx', headers=headers)
+    else:
+        return result
+
+
+@app.post("/xiaoguandao/ShipTrack/getMmsi", summary="船只轨迹页：获取时间段内船只的mmsi")
+async def get_ship_names(item: body_model.GetMmsi):
+    """
+    请求参数说明：
+    - "startDate"：开始日期（类型：str）【参数格式："YYYY-MM-DD"】
+    - "endDate"：结束日期（类型：str）【参数格式："YYYY-MM-DD"】
+    """
+    db = Tortoise.get_connection("default")
+    start_date = item.startDate
+    end_date = item.endDate
+    if start_date == end_date:
+        sql = f"SELECT mmsi FROM `ais_data_history` WHERE date_format(times,'%Y-%m-%d')='{start_date}' " \
+              "AND mmsi!='000000000' GROUP BY mmsi"
+    else:
+        sql = f"SELECT mmsi FROM `ais_data_history` WHERE times >= '{start_date}' AND times <= '{end_date}' " \
+              "AND mmsi!='000000000' GROUP BY mmsi"
+    result = await db.execute_query_dict(sql)
+    return result
+
+
+@app.post("/xiaoguandao/ShipTrack/getHistoryTrack", summary="船只轨迹页：获取船只的历史轨迹")
+async def get_history_track(item: body_model.GetHistoryTrack):
+    """
+    请求参数说明：
+    - "mmsi"：船只mmsi（类型：str）【参数："413220010"】
+    - "startDate"：开始日期（类型：str）【参数格式："YYYY-MM-DD"】
+    - "endDate"：结束日期（类型：str）【参数格式："YYYY-MM-DD"】
+    """
+    db = Tortoise.get_connection("default")
+    mmsi = item.mmsi
+    start_date = item.startDate
+    end_date = item.endDate
+    if start_date == end_date:
+        sql = f"SELECT times, lon, lat FROM `ais_data_history` " \
+              f"WHERE mmsi={mmsi} AND date_format(times,'%Y-%m-%d')='{start_date}'"
+    else:
+        sql = f"SELECT times, lon, lat FROM `ais_data_history` " \
+              f"WHERE mmsi={mmsi} AND times >= '{start_date}' AND times <= '{end_date}'"
+    result = await db.execute_query_dict(sql)
+    return result
+
+
+@app.post("/xiaoguandao/control/powerSwitch", summary="控制电源开关(未完成)")
+async def control_power_switch(item: body_model.ControlSwitch):
+    """
+    请求参数说明：
+    - "masterSta"：总电源开关状态（类型：int）【参数：0(关)、1(开)】
+    - "winchSta"：绞车电源开关状态（类型：int）【参数：0(关)、1(开)】
+    """
+    master_status = item.masterSta
+    winch_status = item.winchSta
+    if master_status not in [0, 1] or winch_status not in [0, 1]:
+        return {"msg": "master_status or winch_status error"}
+    # 建立连接
+    sock = other_methods.ModbusRtuConnector(ip="192.168.2.200", port=4001)
+    send_data = {"device_id": '', "function_code": '', "start_addr": '', "output_value": ''}
+    # 判断命令
+    if master_status and winch_status:
+        pass
+    elif master_status:
+        pass
+    elif winch_status:
+        pass
+    else:
+        pass
+    back_data = sock.exec_command(send_data)
+    print(back_data)
+
+
+@app.get("/xiaoguandao/control/getSwitchStatus", summary="获取电源开关状态(未完成)")
+async def get_switch_status():
+    """
+    说明：
+    - 获取电源开关状态
+    """
+    # 建立socket连接
+    sock = other_methods.ModbusRtuConnector(ip="192.168.2.200", port=4001)
+    send_data = {"device_id": '', "function_code": '', "start_addr": ''}
+    back_data = sock.exec_command(send_data)
+    print(back_data)
+
+
+@app.get("/xiaoguandao/SZ/maxMinAvg", summary="水质页：获取24小时内最大最小平均表格数据")
 async def sz_max_min_avg():
     """
     说明：
@@ -149,7 +284,7 @@ async def sz_max_min_avg():
     return result
 
 
-@app.get("/xiaoguandao/SZ/aisTarget", summary="获取ais数据")
+@app.get("/xiaoguandao/SZ/aisTarget", summary="水质页：获取ais数据")
 async def sz_ais_target():
     """
     说明：
@@ -160,7 +295,7 @@ async def sz_ais_target():
     now_time = '2022-09-06 08:38:00'
     before_minute = 40
     sql = "SELECT times, mmsi, shipname, lon, lat, speed, course, heading, status, callsign, destination " \
-          "FROM ais_data WHERE mmsi != \"000000000\" " \
+          "FROM table_ais WHERE mmsi != \"000000000\" " \
           "AND lon>0 AND lon<180 AND lat>0 AND lat<180 " \
           f"AND times >= '{now_time}'-interval {before_minute} minute AND times <= '{now_time}'"
     ais_datas = await db.execute_query_dict(sql)
