@@ -47,5 +47,11 @@ class GetHistoryTrack(BaseModel):
 
 class ControlSwitch(BaseModel):
     """控制总电源和绞车电源"""
-    masterSta: int = 1
-    winchSta: int = 1
+    name: str = "master"
+    status: int = 1
+
+
+class ControlWinchUpDown(BaseModel):
+    """控制绞车上升下降"""
+    behavior: str = "up"
+    status: int = 1

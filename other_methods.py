@@ -7,8 +7,83 @@
 from datetime import datetime
 from datetime import timedelta
 from modbus_tk import modbus_rtu_over_tcp
+import modbus_tk.modbus_tcp as modbus_tcp
 import time
 import json
+
+
+class ModbusTcpConnector:
+    def __init__(self, ip, port):
+        self.__ip = ip
+        self.__port = port
+        self.__size = 1024
+        self._master = None
+        self.__connected = False
+        self.connect()
+
+    def connect(self):
+        try:
+            self._master = modbus_tcp.TcpMaster(host=self.__ip, port=self.__port)
+            print(f"{self.__ip}:{self.__port} connect success!")
+        except Exception as e:
+            print(f'Error in modbus_tcp_connector.__connect: {repr(e)}')
+            self.__connected = False
+            # self.reconnect()
+
+    def _reconnect(self):
+        # while True:
+        try:
+            self._master = modbus_tcp.TcpMaster(host=self.__ip, port=self.__port)
+            print('client start connect to host/port:{}'.format(self.__port))
+            # break
+        except ConnectionRefusedError:
+            print('modbus server refused or not started, reconnect to server in 5s .... host/port:{}'.format(
+                self.__port))
+            time.sleep(5)
+        except Exception as e:
+            print('do connect error:{}'.format(str(e)))
+            time.sleep(5)
+
+    def exec_command(self, dic_data):
+        """发送数据"""
+        # json转字典
+        if isinstance(dic_data, str):
+            command = json.loads(dic_data)
+        else:
+            command = dic_data
+
+        device_id = int(command['device_id'])
+        function_code = int(command['function_code'])
+        start_addr = int(command['start_addr'])
+        if function_code in (1, 2, 3, 4):
+            # 读寄存器
+            length = int(command['length'])
+            try:
+                self._master.set_timeout(1.0)  # modbus读取数据超时时间设置
+                self._master.set_verbose(True)
+                receive_data = self._master.execute(device_id, function_code, start_addr, length)
+                return receive_data
+            except Exception as e:
+                print(f'An error occurred while executing the read register command:{e}')
+                self._reconnect()
+                return None
+
+        elif function_code in (5, 6, 15, 16):
+            # 写寄存器
+            output_value = command['output_value']
+            try:
+                self._master.set_timeout(0.1)
+                self._master.set_verbose(True)
+                # print(device_id, ' ', function_code, " ", start_addr, " ", output_value)
+                data = self._master.execute(device_id, function_code, start_addr, output_value=output_value)
+                return data
+            except Exception as e:
+                print(f'An error occurred while executing the write register command:{e}')
+                self._reconnect()
+                return None
+        else:
+            print(f'Unsupported function_code.')
+            return None
 
 
 class ModbusRtuConnector:
@@ -30,19 +105,19 @@ class ModbusRtuConnector:
             self.__connected = False
             # self.reconnect()
 
-    def reconnect(self):
-        while True:
-            try:
-                self._master = modbus_rtu_over_tcp.RtuOverTcpMaster(host=self.__ip, port=self.__port)
-                print('client start connect to host/port:{}'.format(self.__port))
-                break
-            except ConnectionRefusedError:
-                print('modbus server refused or not started, reconnect to server in 5s .... host/port:{}'.format(
-                    self.__port))
-                time.sleep(5)
-            except Exception as e:
-                print('do connect error:{}'.format(str(e)))
-                time.sleep(5)
+    def _reconnect(self):
+        # while True:
+        try:
+            self._master = modbus_rtu_over_tcp.RtuOverTcpMaster(host=self.__ip, port=self.__port)
+            print('client start connect to host/port:{}'.format(self.__port))
+            # break
+        except ConnectionRefusedError:
+            print('modbus server refused or not started, reconnect to server in 5s .... host/port:{}'.format(
+                self.__port))
+            time.sleep(5)
+        except Exception as e:
+            print('do connect error:{}'.format(str(e)))
+            time.sleep(5)
 
     def exec_command(self, dic_data):
         """发送数据"""
@@ -57,12 +132,11 @@ class ModbusRtuConnector:
             # 读寄存器
             length = int(command['length'])
             try:
-                self._master.set_timeout(3.0)  # modbus读取数据超时时间设置
+                self._master.set_timeout(1.0)  # modbus读取数据超时时间设置
                 self._master.set_verbose(True)
                 # print(device_id, ' ', function_code, " ", start_addr, " ", length)
                 receive_data = self._master.execute(device_id, function_code, start_addr, length)
                 # print("receive_data:", receive_data)
-
                 # datadict = {}
                 # for i in range(len(receive_data)):
                 #     addr = start_addr + i
@@ -71,14 +145,14 @@ class ModbusRtuConnector:
                 return receive_data
             except Exception as e:
                 print(f'An error occurred while executing the read register command:{e}')
-                # self._reconnect()
+                self._reconnect()
                 return None
 
         elif function_code in (5, 6, 15, 16):
             # 写寄存器
             output_value = command['output_value']
             try:
-                self._master.set_timeout(10.0)
+                self._master.set_timeout(1.0)
                 self._master.set_verbose(True)
                 data = self._master.execute(device_id, function_code, start_addr, output_value=output_value)
                 # print("data = ", data)
@@ -92,6 +166,8 @@ class ModbusRtuConnector:
                 return data
             except Exception as e:
                 print(f'An error occurred while executing the write register command:{e}')
+                self._reconnect()
+                return None
         else:
             print(f'Unsupported function_code.')
 

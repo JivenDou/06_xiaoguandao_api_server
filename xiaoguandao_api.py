@@ -46,7 +46,7 @@ register_tortoise(
 
 
 # ----------------------------------------接口-------------------------------------------
-@app.post("/xiaoguandao/Login", summary="验证登录信息")
+@app.post("/xiaoguandao/Login", summary="登录页：验证登录信息")
 async def verify_login(item: body_model.LoginInfo):
     """
     请求参数说明：
@@ -56,7 +56,7 @@ async def verify_login(item: body_model.LoginInfo):
     db = Tortoise.get_connection("default")
     user_name = item.userName
     password = item.password
-    sql = f"SELECT * FROM user WHERE user_name = '{user_name}' AND password = '{password}'"
+    sql = f"SELECT * FROM xiaoguandao_user WHERE user_name = '{user_name}' AND password = '{password}'"
     result = await db.execute_query_dict(sql)
     if result:
         return {"msg": "success"}
@@ -64,7 +64,7 @@ async def verify_login(item: body_model.LoginInfo):
         return {"msg": "error"}
 
 
-@app.post("/xiaoguandao/realData", summary="获取指定页面实时数据")
+@app.post("/xiaoguandao/realData", summary="所有页：获取指定页面实时数据")
 async def real_data(item: body_model.GetRealData):
     """
     请求参数说明：
@@ -81,7 +81,7 @@ async def real_data(item: body_model.GetRealData):
     else:
         return {"msg": "page_name error"}
 
-    sql = f"SELECT {','.join(param_names)} FROM table_shucai ORDER BY times DESC LIMIT 1"
+    sql = f"SELECT {','.join(param_names)} FROM xiaoguandao_shucai_tbl ORDER BY times DESC LIMIT 1"
     result = await db.execute_query_dict(sql)
     if result:
         for r in result[0]:
@@ -92,7 +92,7 @@ async def real_data(item: body_model.GetRealData):
         return result
 
 
-@app.post("/xiaoguandao/echartsData", summary="获取指定时间参数的echarts图数据")
+@app.post("/xiaoguandao/echartsData", summary="所有页：获取指定时间参数的echarts图数据")
 async def echarts_data(item: body_model.GetEchartsData):
     """
     请求参数说明：
@@ -102,6 +102,7 @@ async def echarts_data(item: body_model.GetEchartsData):
     db = Tortoise.get_connection("default")
     time_range = item.timeRange
     param_name = item.paramName
+    table_name = "xiaoguandao_shucai_tbl"
     if param_name not in param_name_list:
         return {"msg": "param_name error"}
     # 取现在、24小时内、7天内、30天内的时间
@@ -111,13 +112,13 @@ async def echarts_data(item: body_model.GetEchartsData):
     month_before = other_methods.get_time_range(30)
     # 判断时间段
     if time_range == "HOUR":
-        sql = f"SELECT times, ROUND({param_name},2) {param_name} FROM `table_shucai` " \
+        sql = f"SELECT times, ROUND({param_name},2) {param_name} FROM `{table_name}` " \
               f"WHERE times >= '{hour_before}' and times <= '{now_time}'"
     elif time_range == "WEEK":
-        sql = f"SELECT times, ROUND({param_name},2) {param_name} FROM `table_shucai` " \
+        sql = f"SELECT times, ROUND({param_name},2) {param_name} FROM `{table_name}` " \
               f"WHERE times >= '{week_before}' and times <= '{now_time}'"
     elif time_range == "MONTH":
-        sql = f"SELECT times, ROUND({param_name},2) {param_name} FROM `table_shucai` " \
+        sql = f"SELECT times, ROUND({param_name},2) {param_name} FROM `{table_name}` " \
               f"WHERE times >= '{month_before}' and times <= '{now_time}'"
     else:
         return {"msg": "time_range error"}
@@ -147,6 +148,7 @@ async def history_data(item: body_model.GetHistoryData):
     start_date = item.startDate
     end_date = item.endDate
     excel_flag = item.excel
+    table_name = "xiaoguandao_shucai_tbl"
     # --------------------------------------------------查数据--------------------------------------------------
     if page_name == "SZ":
         param_names = enums.sz_param_name_list
@@ -159,10 +161,10 @@ async def history_data(item: body_model.GetHistoryData):
 
     select_params = [f"ROUND({name},2)  {name}" for name in param_names]
     if start_date == end_date:
-        sql = f"SELECT id,times,{','.join(select_params)} FROM `table_shucai` " \
+        sql = f"SELECT id,times,{','.join(select_params)} FROM `{table_name}` " \
               f"WHERE date_format(times,'%Y-%m-%d')='{start_date}' ORDER BY times DESC;"
     else:
-        sql = f"SELECT id,times,{','.join(select_params)} FROM `table_shucai` " \
+        sql = f"SELECT id,times,{','.join(select_params)} FROM `{table_name}` " \
               f"WHERE times >= '{start_date} 00:00:00' AND times <= '{end_date} 23:59:59' ORDER BY times DESC;"
     result = await db.execute_query_dict(sql)
     for data in result:
@@ -190,11 +192,12 @@ async def get_ship_names(item: body_model.GetMmsi):
     db = Tortoise.get_connection("default")
     start_date = item.startDate
     end_date = item.endDate
+    table_name = "xiaoguandao_ais_history_tbl"
     if start_date == end_date:
-        sql = f"SELECT mmsi FROM `ais_data_history` WHERE date_format(times,'%Y-%m-%d')='{start_date}' " \
+        sql = f"SELECT mmsi FROM `{table_name}` WHERE date_format(times,'%Y-%m-%d')='{start_date}' " \
               "AND mmsi!='000000000' GROUP BY mmsi"
     else:
-        sql = f"SELECT mmsi FROM `ais_data_history` WHERE times >= '{start_date}' AND times <= '{end_date}' " \
+        sql = f"SELECT mmsi FROM `{table_name}` WHERE times >= '{start_date}' AND times <= '{end_date}' " \
               "AND mmsi!='000000000' GROUP BY mmsi"
     result = await db.execute_query_dict(sql)
     return result
@@ -212,54 +215,99 @@ async def get_history_track(item: body_model.GetHistoryTrack):
     mmsi = item.mmsi
     start_date = item.startDate
     end_date = item.endDate
+    table_name = "xiaoguandao_ais_history_tbl"
     if start_date == end_date:
-        sql = f"SELECT times, lon, lat FROM `ais_data_history` " \
+        sql = f"SELECT times, lon, lat FROM `{table_name}` " \
               f"WHERE mmsi={mmsi} AND date_format(times,'%Y-%m-%d')='{start_date}'"
     else:
-        sql = f"SELECT times, lon, lat FROM `ais_data_history` " \
+        sql = f"SELECT times, lon, lat FROM `{table_name}` " \
               f"WHERE mmsi={mmsi} AND times >= '{start_date}' AND times <= '{end_date}'"
     result = await db.execute_query_dict(sql)
     return result
 
 
-@app.post("/xiaoguandao/control/powerSwitch", summary="控制电源开关(未完成)")
+@app.post("/xiaoguandao/control/powerSwitch", summary="控制页：控制电源开关")
 async def control_power_switch(item: body_model.ControlSwitch):
     """
-    请求参数说明：
-    - "masterSta"：总电源开关状态（类型：int）【参数：0(关)、1(开)】
-    - "winchSta"：绞车电源开关状态（类型：int）【参数：0(关)、1(开)】
+    - 请求参数说明：
+    - "name"：开关名（类型：str）【参数："master"(总电源开关)、"winch"(绞车电源开关)】
+    - "status"：开关状态（类型：int）【参数：0(关)、1(开)】
+    - ------
+    - 返回参数说明：
+    - 返回更改后的开关和状态
     """
-    master_status = item.masterSta
-    winch_status = item.winchSta
-    if master_status not in [0, 1] or winch_status not in [0, 1]:
-        return {"msg": "master_status or winch_status error"}
-    # 建立连接
-    sock = other_methods.ModbusRtuConnector(ip="192.168.2.200", port=4001)
-    send_data = {"device_id": '', "function_code": '', "start_addr": '', "output_value": ''}
-    # 判断命令
-    if master_status and winch_status:
-        pass
-    elif master_status:
-        pass
-    elif winch_status:
-        pass
+    name = item.name
+    status = item.status
+    if status not in [0, 1]:
+        return {"msg": "status error"}
+
+    send_data = {"device_id": 1, "function_code": 5, "start_addr": None, "output_value": None}
+    # 判断设置哪个开关
+    if name == "master":
+        send_data["start_addr"] = 0
+    elif name == "winch":
+        send_data["start_addr"] = 1
     else:
-        pass
-    back_data = sock.exec_command(send_data)
-    print(back_data)
+        return {"msg": "name error"}
+    # 设置状态
+    send_data["output_value"] = 0 if status else 1
+    back_data = sock_power_switch.exec_command(send_data)
+    if back_data is None:
+        return {"error": "connection fail"}
+    elif back_data[1] == 0:
+        return {"name": name, "status": 1}
+    else:
+        return {"name": name, "status": 0}
 
 
-@app.get("/xiaoguandao/control/getSwitchStatus", summary="获取电源开关状态(未完成)")
+@app.post("/xiaoguandao/control/winchUpDown", summary="控制页：控制绞车上升下降")
+async def control_winch_up_down(item: body_model.ControlWinchUpDown):
+    """
+   - 请求参数说明：
+   - "behavior"：行为（类型：str）【参数："up"(上升)、"down"(下降)】
+   - "status"：开关状态（类型：int）【参数：0(关)、1()】
+   - ------
+    - 返回参数说明：
+    - 返回此时的行为和状态
+   """
+    behavior = item.behavior
+    status = item.status
+    if status not in [0, 1]:
+        return {"msg": "status error"}
+
+    send_data = {"device_id": 0, "function_code": 5, "start_addr": None, "output_value": None}
+    # 判断设置什么行为
+    if behavior == "up":
+        send_data["start_addr"] = 3075
+    elif behavior == "down":
+        send_data["start_addr"] = 3074
+    else:
+        return {"msg": "behavior error"}
+    # 启动行为
+    send_data["output_value"] = status
+    back_data = sock_winch_up_down.exec_command(send_data)
+    # if back_data is None:
+    #     return {"error": "connection fail"}
+    # else:
+    return {"behavior": behavior, "status": status}
+
+
+@app.get("/xiaoguandao/control/getSwitchStatus", summary="控制页：获取所有电源开关状态")
 async def get_switch_status():
     """
-    说明：
-    - 获取电源开关状态
+    返回参数说明：
+    - "master" : 总开关
+    - "winch" : 绞车开关
+    - 0/1 : 关/开
     """
     # 建立socket连接
-    sock = other_methods.ModbusRtuConnector(ip="192.168.2.200", port=4001)
-    send_data = {"device_id": '', "function_code": '', "start_addr": ''}
+    sock = other_methods.ModbusRtuConnector(ip="127.0.0.1", port=502)
+    send_data = {"device_id": '1', "function_code": '1', "start_addr": '0', "length": "2"}
     back_data = sock.exec_command(send_data)
-    print(back_data)
+    if back_data is None:
+        return {"error": "connection fail"}
+    else:
+        return {"master": 0 if back_data[0] else 1, "winch": 0 if back_data[1] else 1}
 
 
 @app.get("/xiaoguandao/SZ/maxMinAvg", summary="水质页：获取24小时内最大最小平均表格数据")
@@ -269,6 +317,7 @@ async def sz_max_min_avg():
     - 返回的数据顺序：温度 盐度 深度 溶解氧 叶绿素 浊度 PH
     """
     db = Tortoise.get_connection("default")
+    table_name = "xiaoguandao_shucai_tbl"
     # 取现在和前一天的时间
     now_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     hour_before = other_methods.get_time_range(1)
@@ -277,7 +326,7 @@ async def sz_max_min_avg():
     result = []
     for name in param_names:
         sql = f"SELECT ROUND(AVG({name}),2 ) avg,ROUND(MAX({name}),2 ) AS max,ROUND(MIN({name}),2 ) AS min " \
-              f"FROM `table_shucai` WHERE times >= '{hour_before}' and times <= '{now_time}'"
+              f"FROM `{table_name}` WHERE times >= '{hour_before}' and times <= '{now_time}'"
         temp = await db.execute_query_dict(sql)
         temp[0]['name'] = name
         result.append(temp[0])
@@ -295,7 +344,7 @@ async def sz_ais_target():
     now_time = '2022-09-06 08:38:00'
     before_minute = 40
     sql = "SELECT times, mmsi, shipname, lon, lat, speed, course, heading, status, callsign, destination " \
-          "FROM table_ais WHERE mmsi != \"000000000\" " \
+          "FROM xiaoguandao_ais_tbl WHERE mmsi != \"000000000\" " \
           "AND lon>0 AND lon<180 AND lat>0 AND lat<180 " \
           f"AND times >= '{now_time}'-interval {before_minute} minute AND times <= '{now_time}'"
     ais_datas = await db.execute_query_dict(sql)
@@ -306,7 +355,7 @@ async def sz_ais_target():
         # 'status': 'UnderWayUsingEngine', 'callsign': None, 'destination': None}
 
         # 添加历史轨迹
-        sql = f"SELECT lon, lat FROM ais_data_history WHERE mmsi = \'{data['mmsi']}\'" \
+        sql = f"SELECT lon, lat FROM xiaoguandao_ais_history_tbl WHERE mmsi = \'{data['mmsi']}\'" \
               f"AND lon>0 AND lon<180 AND lat>0 AND lat<180"
         history_datas = await db.execute_query_dict(sql)
         data["track"] = other_methods.get_ais_track(history_datas)
@@ -318,6 +367,10 @@ async def sz_ais_target():
 
 
 if __name__ == '__main__':
+    # 建立控制电源开关的继电器连接
+    sock_power_switch = other_methods.ModbusRtuConnector(ip="127.0.0.1", port=502)
+    # 建立控制绞车的PLC连接
+    sock_winch_up_down = other_methods.ModbusTcpConnector(ip="127.0.0.1", port=503)
     uvicorn.run(
         app=app,
         host="0.0.0.0",
