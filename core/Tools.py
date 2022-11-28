@@ -1,8 +1,8 @@
 """
-@File  : other_methods.py
+@File  : Tools.py
 @Author: djw
 @CreateDate  : 2022/11/8 15:20:30
-@Description  : 此文件为其他功能函数
+@Description  : 提供一些功能的工具函数和类
 """
 from datetime import datetime
 from datetime import timedelta
