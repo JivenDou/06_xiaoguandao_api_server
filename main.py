@@ -34,7 +34,8 @@ app.add_middleware(
 # 连接数据库
 register_tortoise(
     app,
-    db_url='mysql://root:zzZZ4144670..@127.0.0.1:3306/shucai_xiaoguandao',
+    db_url=f'mysql://{settings.DB_USERNAME}:{settings.DB_PASSWORD}'
+           f'@{settings.DB_IP}:{settings.DB_PORT}/{settings.DATABASE}',
     modules={"models": []},
     generate_schemas=True,
     add_exception_handlers=True)
@@ -71,7 +72,7 @@ app.state.views = Jinja2Templates(directory=settings.TEMPLATE_DIR)
 if __name__ == '__main__':
     uvicorn.run(
         app=app,
-        host="0.0.0.0",
-        port=8000,
-        reload=False
+        host=settings.API_IP,
+        port=settings.API_PORT,
+        reload=settings.RELOAD
     )

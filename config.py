@@ -6,6 +6,16 @@ from typing import List
 class Config(BaseSettings):
     # 调试模式
     APP_DEBUG: bool = False
+    # 接口ip和端口
+    API_IP: str = "0.0.0.0"
+    API_PORT: int = 8000
+    RELOAD: bool = False
+    # 数据库连接
+    DB_USERNAME: str = "root"
+    DB_PASSWORD: str = "zzZZ4144670.."
+    DB_IP: str = "127.0.0.1"
+    DB_PORT: str = "3306"
+    DATABASE: str = "shucai_xiaoguandao"
     # 项目信息
     VERSION: str = "0.0.1"
     PROJECT_NAME: str = "小管岛海洋牧场监测系统接口文档"
